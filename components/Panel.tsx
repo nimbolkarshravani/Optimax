@@ -17,25 +17,23 @@ interface PanelProps {
   changedFields?: Set<keyof PanelState>;
 }
 
-export const STATUS_OPTIONS = [
+// Ordered stages shown in the progress bar
+const STAGES = [
   "Defining",
   "In Progress",
-  "Blocked",
   "Awaiting Verification",
   "Verified",
   "Done",
+] as const;
+
+const FIELDS: { key: keyof PanelState; label: string; placeholder: string }[] = [
+  { key: "objective",     label: "Objective",      placeholder: "What is the main goal?" },
+  { key: "constraints",   label: "Constraints",    placeholder: "What limitations or requirements exist?" },
+  { key: "openQuestions", label: "Open Questions", placeholder: "What needs clarification?" },
+  { key: "assumptions",   label: "Assumptions",    placeholder: "What is being assumed?" },
 ];
 
-const FIELDS: { key: keyof PanelState; label: string; placeholder: string }[] =
-  [
-    { key: "objective",      label: "Objective",       placeholder: "What is the main goal?" },
-    { key: "constraints",    label: "Constraints",     placeholder: "What limitations or requirements exist?" },
-    { key: "openQuestions",  label: "Open Questions",  placeholder: "What needs clarification?" },
-    { key: "assumptions",    label: "Assumptions",     placeholder: "What is being assumed?" },
-  ];
-
 export default function Panel({ state, onChange, isUpdating, changedFields }: PanelProps) {
-  // Per-field counter — incrementing forces the animated span to remount and restart
   const [flashKeys, setFlashKeys] = useState<Partial<Record<keyof PanelState, number>>>({});
 
   useEffect(() => {
@@ -70,7 +68,6 @@ export default function Panel({ state, onChange, isUpdating, changedFields }: Pa
                 <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
                   {label}
                 </label>
-                {/* Remounting this span (via key) restarts the CSS animation */}
                 {flashKey !== undefined && (
                   <span
                     key={flashKey}
@@ -90,40 +87,75 @@ export default function Panel({ state, onChange, isUpdating, changedFields }: Pa
         })}
 
         <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">
+          <label className="block text-xs font-medium text-gray-400 mb-3 uppercase tracking-wide">
             Status
           </label>
-          <select
-            className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors appearance-none cursor-pointer"
-            value={state.status}
-            onChange={(e) => onChange("status", e.target.value)}
-          >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-          <StatusBadge status={state.status} />
+          <StatusBar status={state.status} />
         </div>
       </div>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    Defining:               "bg-gray-500/20 text-gray-300 border-gray-500/30",
-    "In Progress":          "bg-blue-500/20 text-blue-300 border-blue-500/30",
-    Blocked:                "bg-red-500/20 text-red-300 border-red-500/30",
-    "Awaiting Verification":"bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-    Verified:               "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-    Done:                   "bg-purple-500/20 text-purple-300 border-purple-500/30",
-  };
+function StatusBar({ status }: { status: string }) {
+  const isBlocked = status === "Blocked";
 
-  const cls = colors[status] ?? "bg-gray-500/20 text-gray-300 border-gray-500/30";
+  // For Blocked, treat the active stage as "In Progress" but render red
+  const effectiveStatus = isBlocked ? "In Progress" : status;
+  const activeIndex = STAGES.indexOf(effectiveStatus as typeof STAGES[number]);
 
   return (
-    <div className={`mt-2 inline-flex items-center px-2.5 py-1 rounded-full border text-xs font-medium ${cls}`}>
-      {status}
+    <div className="space-y-2">
+      {/* Pills row */}
+      <div className="flex items-center gap-1">
+        {STAGES.map((stage, i) => {
+          const isPast    = i < activeIndex;
+          const isActive  = i === activeIndex;
+          const isFuture  = i > activeIndex;
+
+          let pillCls: string;
+          if (isActive && isBlocked) {
+            pillCls = "bg-red-500/20 text-red-300 border border-red-500/50 ring-1 ring-red-500/40";
+          } else if (isActive) {
+            pillCls = "bg-blue-500/20 text-blue-300 border border-blue-500/50 ring-1 ring-blue-500/40";
+          } else if (isPast) {
+            pillCls = "bg-gray-700/60 text-gray-400 border border-gray-600/40";
+          } else {
+            pillCls = "bg-transparent text-gray-600 border border-gray-700/40";
+          }
+
+          return (
+            <div key={stage} className="flex items-center flex-1 min-w-0">
+              <div
+                className={`flex-1 text-center px-1 py-1 rounded-full text-[10px] font-medium leading-tight transition-all ${pillCls}`}
+                style={{ minWidth: 0 }}
+              >
+                <span className="block truncate px-0.5">
+                  {stage === "Awaiting Verification" ? "Verifying" : stage}
+                </span>
+              </div>
+              {/* Connector line between pills */}
+              {i < STAGES.length - 1 && (
+                <div
+                  className={`h-px w-1 shrink-0 ${
+                    i < activeIndex ? "bg-gray-500" : "bg-gray-700"
+                  }`}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Full label + blocked note below */}
+      <div className="flex items-center gap-2">
+        <span className={`text-xs font-medium ${isBlocked ? "text-red-400" : "text-gray-400"}`}>
+          {status}
+        </span>
+        {isBlocked && (
+          <span className="text-xs text-red-500/80">· blocked</span>
+        )}
+      </div>
     </div>
   );
 }
