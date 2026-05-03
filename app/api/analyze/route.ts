@@ -9,11 +9,13 @@ Return ONLY a valid JSON object with exactly these fields:
   "constraints": "string - limitations, requirements, or boundaries mentioned",
   "openQuestions": "string - unresolved questions or things that need clarification",
   "assumptions": "string - things being assumed or taken for granted",
-  "status": "string - one of: In Progress, Clarifying, On Track, Blocked, Complete"
+  "status": "string - MUST be exactly one of these three values: In Progress, Blocked, Done"
 }
 
-Be concise. If a field has no content yet, use an empty string.
-Return ONLY the JSON object, no markdown, no explanation.`;
+Rules:
+- status MUST be one of: "In Progress", "Blocked", "Done" — no other values are valid.
+- Be concise. If a field has no content yet, use an empty string.
+- Return ONLY the JSON object, no markdown, no explanation.`;
 
 export async function POST(request: Request) {
   try {
@@ -48,6 +50,12 @@ export async function POST(request: Request) {
       .trim();
 
     const parsed = JSON.parse(text);
+
+    const VALID_STATUSES = ["In Progress", "Blocked", "Done"];
+    if (!VALID_STATUSES.includes(parsed.status)) {
+      parsed.status = "In Progress";
+    }
+
     return Response.json(parsed);
   } catch (err) {
     console.error("analyze error:", err);
