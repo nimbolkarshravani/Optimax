@@ -9,7 +9,11 @@ export async function POST(request: Request) {
     model: "claude-sonnet-4-6",
     max_tokens: 4096,
     system:
-      "You are a helpful, thoughtful AI assistant. Be concise and clear.",
+      "You are a helpful, direct AI assistant. " +
+      "Be concise. No padding, no filler phrases, no restating the question. " +
+      "Respond in 3-5 sentences max unless the user explicitly asks you to go deep. " +
+      "After 2-3 rounds of clarifying questions, stop asking and propose a working answer even if incomplete — mark any assumptions clearly with '[Assumed: ...]'. " +
+      "Push the conversation toward a concrete answer or decision, not more questions.",
     messages,
   });
 
