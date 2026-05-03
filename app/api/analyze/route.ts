@@ -16,10 +16,16 @@ Return ONLY a valid JSON object with exactly these fields:
 {
   "objective": "string - the main goal or problem being solved",
   "constraints": "string - limitations, requirements, or boundaries mentioned",
-  "openQuestions": "string - unresolved questions or things needing clarification",
+  "openQuestions": "string - only questions that are STILL unanswered",
   "assumptions": "string - things being assumed or taken for granted",
   "status": "string - MUST be exactly one of: In Progress, Blocked, Awaiting Verification, Verified, Done"
 }
+
+## Open Questions rules:
+- Only list questions that have NOT yet been answered in the conversation.
+- If a user message provides information that answers an open question, remove that question from the list.
+- Example: if "What is the distance?" was open and the user says "the distance is 150 km", remove it.
+- Do not carry forward resolved questions. The list should reflect only current unknowns.
 
 ## Status transition rules (follow strictly):
 
@@ -27,24 +33,19 @@ Return ONLY a valid JSON object with exactly these fields:
 
 **Blocked** — the user is stuck, missing information, or hit an error that stops progress.
 
-**Awaiting Verification** — set this when the user signals they have a solution or answer
-(phrases like "done", "finished", "here's my solution", "is this correct?", "does this work?",
-"can you verify", "check this", or they paste a final answer/code/output for review).
+**Awaiting Verification** — set this ONLY when the USER (not the AI) explicitly shares their own
+solution, answer, or output for the AI to check. Trigger phrases from the user: "here's my answer",
+"is this correct?", "does this work?", "can you verify this", "check this", or they paste their
+own code/output/calculation.
+NEVER set this because the AI provided an answer — the AI answering does not count.
 
-**Verified** — set this ONLY when status was "Awaiting Verification" AND you have checked the
-user's solution against the objective and all constraints and it genuinely satisfies them.
-If the solution is incomplete or misses a constraint, do NOT set Verified — set "In Progress"
-and add a specific failure note to openQuestions (e.g. "Solution ignores the 150 km constraint").
+**Verified** — set this ONLY when the most recent status was "Awaiting Verification" AND the
+user's solution satisfies the objective and all constraints.
+If it fails any constraint, set status to "In Progress" and add a specific failure note to
+openQuestions (e.g. "User's solution ignores the 150 km constraint").
 
 **Done** — never set this automatically. Only valid if the user explicitly says "done" or "close"
 after Verified, or manually sets it themselves.
-
-## Verification logic (applies when status should move from Awaiting Verification):
-1. Re-read the objective.
-2. Check every constraint against the proposed solution.
-3. If all constraints are satisfied → set status to "Verified".
-4. If any constraint is missed → set status to "In Progress", add a clear note in openQuestions
-   describing exactly which constraint failed and why.
 
 ## General rules:
 - status MUST be one of the five values above — no other values are valid.
