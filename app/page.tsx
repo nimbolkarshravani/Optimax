@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import Chat, { Message } from "@/components/Chat";
 import Panel, { PanelState } from "@/components/Panel";
 
@@ -12,30 +12,46 @@ const DEFAULT_PANEL: PanelState = {
   status: "In Progress",
 };
 
+const TEXT_FIELDS = ["objective", "constraints", "openQuestions", "assumptions"] as const;
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [panel, setPanel] = useState<PanelState>(DEFAULT_PANEL);
   const [isPanelUpdating, setIsPanelUpdating] = useState(false);
+  const [changedFields, setChangedFields] = useState<Set<keyof PanelState>>(new Set());
+
+  // Always-current panel ref so updatePanel closure never goes stale
+  const panelRef = useRef<PanelState>(DEFAULT_PANEL);
+  useEffect(() => { panelRef.current = panel; }, [panel]);
 
   const updatePanel = useCallback(async (history: Message[]) => {
     setIsPanelUpdating(true);
+    const prev = panelRef.current;
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: history, currentStatus: prev.status }),
       });
       if (res.ok) {
         const data = await res.json();
-        setPanel((prev) => ({
-          objective: data.objective ?? prev.objective,
-          constraints: data.constraints ?? prev.constraints,
+        const next: PanelState = {
+          objective:     data.objective     ?? prev.objective,
+          constraints:   data.constraints   ?? prev.constraints,
           openQuestions: data.openQuestions ?? prev.openQuestions,
-          assumptions: data.assumptions ?? prev.assumptions,
-          status: data.status ?? prev.status,
-        }));
+          assumptions:   data.assumptions   ?? prev.assumptions,
+          status:        data.status        ?? prev.status,
+        };
+
+        // Compute which text fields actually changed
+        const changed = new Set<keyof PanelState>();
+        for (const key of TEXT_FIELDS) {
+          if (next[key] !== prev[key]) changed.add(key);
+        }
+        setChangedFields(changed);
+        setPanel(next);
       }
     } finally {
       setIsPanelUpdating(false);
@@ -62,9 +78,7 @@ export default function Home() {
         body: JSON.stringify({ messages: nextMessages }),
       });
 
-      if (!res.ok || !res.body) {
-        throw new Error("Stream failed");
-      }
+      if (!res.ok || !res.body) throw new Error("Stream failed");
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -75,9 +89,7 @@ export default function Home() {
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
+        for (const line of chunk.split("\n")) {
           if (!line.startsWith("data: ")) continue;
           const payload = line.slice(6);
           if (payload === "[DONE]") continue;
@@ -86,10 +98,7 @@ export default function Home() {
             fullText += text;
             setMessages((prev) => {
               const updated = [...prev];
-              updated[updated.length - 1] = {
-                role: "assistant",
-                content: fullText,
-              };
+              updated[updated.length - 1] = { role: "assistant", content: fullText };
               return updated;
             });
           } catch {
@@ -98,12 +107,8 @@ export default function Home() {
         }
       }
 
-      const finalHistory: Message[] = [
-        ...nextMessages,
-        { role: "assistant", content: fullText },
-      ];
-      await updatePanel(finalHistory);
-    } catch (err) {
+      await updatePanel([...nextMessages, { role: "assistant", content: fullText }]);
+    } catch {
       setMessages((prev) => {
         const updated = [...prev];
         updated[updated.length - 1] = {
@@ -140,6 +145,7 @@ export default function Home() {
           state={panel}
           onChange={handlePanelChange}
           isUpdating={isPanelUpdating}
+          changedFields={changedFields}
         />
       </div>
     </div>

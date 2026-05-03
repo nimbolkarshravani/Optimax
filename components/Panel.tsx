@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 export interface PanelState {
   objective: string;
   constraints: string;
@@ -12,9 +14,11 @@ interface PanelProps {
   state: PanelState;
   onChange: (field: keyof PanelState, value: string) => void;
   isUpdating: boolean;
+  changedFields?: Set<keyof PanelState>;
 }
 
-const STATUS_OPTIONS = [
+export const STATUS_OPTIONS = [
+  "Defining",
   "In Progress",
   "Blocked",
   "Awaiting Verification",
@@ -24,29 +28,25 @@ const STATUS_OPTIONS = [
 
 const FIELDS: { key: keyof PanelState; label: string; placeholder: string }[] =
   [
-    {
-      key: "objective",
-      label: "Objective",
-      placeholder: "What is the main goal?",
-    },
-    {
-      key: "constraints",
-      label: "Constraints",
-      placeholder: "What limitations or requirements exist?",
-    },
-    {
-      key: "openQuestions",
-      label: "Open Questions",
-      placeholder: "What needs clarification?",
-    },
-    {
-      key: "assumptions",
-      label: "Assumptions",
-      placeholder: "What is being assumed?",
-    },
+    { key: "objective",      label: "Objective",       placeholder: "What is the main goal?" },
+    { key: "constraints",    label: "Constraints",     placeholder: "What limitations or requirements exist?" },
+    { key: "openQuestions",  label: "Open Questions",  placeholder: "What needs clarification?" },
+    { key: "assumptions",    label: "Assumptions",     placeholder: "What is being assumed?" },
   ];
 
-export default function Panel({ state, onChange, isUpdating }: PanelProps) {
+export default function Panel({ state, onChange, isUpdating, changedFields }: PanelProps) {
+  // Per-field counter — incrementing forces the animated span to remount and restart
+  const [flashKeys, setFlashKeys] = useState<Partial<Record<keyof PanelState, number>>>({});
+
+  useEffect(() => {
+    if (!changedFields || changedFields.size === 0) return;
+    setFlashKeys((prev) => {
+      const next = { ...prev };
+      changedFields.forEach((f) => { next[f] = (prev[f] ?? 0) + 1; });
+      return next;
+    });
+  }, [changedFields]);
+
   return (
     <div className="flex flex-col h-full bg-gray-900 border-l border-gray-800">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
@@ -62,20 +62,32 @@ export default function Panel({ state, onChange, isUpdating }: PanelProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {FIELDS.map(({ key, label, placeholder }) => (
-          <div key={key}>
-            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">
-              {label}
-            </label>
-            <textarea
-              className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-gray-100 placeholder-gray-600 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors min-h-[72px]"
-              placeholder={placeholder}
-              value={state[key]}
-              onChange={(e) => onChange(key, e.target.value)}
-              rows={3}
-            />
-          </div>
-        ))}
+        {FIELDS.map(({ key, label, placeholder }) => {
+          const flashKey = flashKeys[key];
+          return (
+            <div key={key}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                  {label}
+                </label>
+                {/* Remounting this span (via key) restarts the CSS animation */}
+                {flashKey !== undefined && (
+                  <span
+                    key={flashKey}
+                    className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 field-flash"
+                  />
+                )}
+              </div>
+              <textarea
+                className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-gray-100 placeholder-gray-600 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors min-h-[72px]"
+                placeholder={placeholder}
+                value={state[key]}
+                onChange={(e) => onChange(key, e.target.value)}
+                rows={3}
+              />
+            </div>
+          );
+        })}
 
         <div>
           <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">
@@ -87,9 +99,7 @@ export default function Panel({ state, onChange, isUpdating }: PanelProps) {
             onChange={(e) => onChange("status", e.target.value)}
           >
             {STATUS_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
+              <option key={opt} value={opt}>{opt}</option>
             ))}
           </select>
           <StatusBadge status={state.status} />
@@ -101,15 +111,15 @@ export default function Panel({ state, onChange, isUpdating }: PanelProps) {
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    "In Progress": "bg-blue-500/20 text-blue-300 border-blue-500/30",
-    Blocked: "bg-red-500/20 text-red-300 border-red-500/30",
-    "Awaiting Verification": "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-    Verified: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-    Done: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+    Defining:               "bg-gray-500/20 text-gray-300 border-gray-500/30",
+    "In Progress":          "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    Blocked:                "bg-red-500/20 text-red-300 border-red-500/30",
+    "Awaiting Verification":"bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
+    Verified:               "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+    Done:                   "bg-purple-500/20 text-purple-300 border-purple-500/30",
   };
 
-  const cls =
-    colors[status] ?? "bg-gray-500/20 text-gray-300 border-gray-500/30";
+  const cls = colors[status] ?? "bg-gray-500/20 text-gray-300 border-gray-500/30";
 
   return (
     <div className={`mt-2 inline-flex items-center px-2.5 py-1 rounded-full border text-xs font-medium ${cls}`}>
